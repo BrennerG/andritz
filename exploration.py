@@ -1,7 +1,10 @@
 import pandas as pd
 import streamlit as st
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
+
 
 
 st.title('Andritz Coding Challenge')
@@ -61,9 +64,8 @@ with st.echo():
 st.line_chart(data=moving_average)
 
 # FITTING INLET BRIGHTNESS
-st.markdown('### fit inlet brightness using linear regression')
+st.markdown('### fit inlet brightness via time using linear regression')
 with st.echo():
-
     X = inp2.loc[:, ['step']]
     y = inp2.loc[:, 'inlet_brightness']
     model = LinearRegression()
@@ -104,13 +106,56 @@ Ultimately we could thus try to:
     3. impute the target variable to make finer granulated predictions (in this case I would need to ask stakeholders whether this is something they want (e.g. 'live monitoring' of sorts) or if it's ok to have predictions only for every 2 hours!)
 ''')
 
-# MERGING DATAFRAMES
-st.header("merging input1 and input2")
+st.markdown("### target brightness raw")
+st.line_chart(data=targ, x='date', y='target_brightness')
 
+st.markdown("### target brightness moving avg")
+targ_viz = targ.copy()
+targ_viz['step'] = np.arange(len(targ_viz.index))
 with st.echo():
-    inp2.drop('step', axis=1, inplace=True)
-    merged = pd.merge(inp1, inp2, on='date', how='outer')
-    merged['inlet_brightness'] = merged['inlet_brightness'].interpolate(method='linear')
+    moving_average = targ_viz['target_brightness'].rolling(
+        window=100,          # window
+        center=True,        # puts the average at the center of the window
+        min_periods=50,     # choose about half the window size
+    ).mean()                # compute the mean (could also do median, std, min, max, ...)
+st.line_chart(data=moving_average)
 
-st.dataframe(merged)
-st.write(merged.describe())
+st.markdown("### fit target via step using linear regression")
+with st.echo():
+    X = targ_viz.loc[:, ['step']]
+    y = targ_viz.loc[:, 'target_brightness']
+    model = LinearRegression()
+    model.fit(X, y)
+    y_pred = pd.Series(model.predict(X), index=X.index, name='lin_pred')
+
+targ_viz = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_index=True)
+st.line_chart(data=targ_viz, x='date', y=['target_brightness', 'lin_pred'])
+
+st.markdown('''### Seasonality \ndoes not make any sense right? omit for now...''')
+
+st.markdown('### Serial Dependence')
+with st.echo():
+    targ_viz['lag_1'] = targ_viz['target_brightness'].shift(1)
+    X = targ_viz.loc[:, ['lag_1']]
+    X.dropna(inplace=True)  # drop missing values in the feature set
+    y = targ_viz.loc[:, 'target_brightness']  # create the target
+    y, X = y.align(X, join='inner')  # drop corresponding values in target
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    y_pred = pd.Series(model.predict(X), index=X.index, name='lag_pred')
+
+    targ_viz = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_index=True)
+    fig = px.scatter(targ_viz, x='lag_1', y='target_brightness', title='Auto Correlation lag=1')
+    fig.add_trace(go.Scatter(x=targ_viz['lag_1'], y=targ_viz['lag_pred'], mode='lines', name='linear fit'))
+    st.plotly_chart(fig)
+
+st.markdown('### Serial Dependence: Autocorrelation Plot')
+with st.echo():
+    lags = range(1, 33)  # Choose the number of lags to include in the plot
+    autocorrelation_values = [targ_viz['target_brightness'].autocorr(lag=lag) for lag in lags]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=list(lags), y=autocorrelation_values, mode='markers+lines', name='Autocorrelation'))
+    fig.update_layout(title='Autocorrelation Plot', xaxis_title='Lag', yaxis_title='Autocorrelation')
+    st.plotly_chart(fig)
