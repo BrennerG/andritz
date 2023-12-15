@@ -7,7 +7,7 @@ from sklearn.linear_model import LinearRegression
 
 
 
-st.title('Andritz Coding Challenge')
+st.title('Andritz Coding Challenge: Data Exploration')
 pd.set_option('display.date_dayfirst', True)  # Customize based on your desired format
 
 
@@ -131,9 +131,32 @@ with st.echo():
 targ_viz = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_index=True)
 st.line_chart(data=targ_viz, x='date', y=['target_brightness', 'lin_pred'])
 
-st.markdown('''### Seasonality \ndoes not make any sense right? omit for now...''')
 
-st.markdown('### Serial Dependence')
+st.markdown('### Seasonality : Hours')
+with st.echo():
+    targ_viz['hour'] = targ_viz['date'].dt.hour
+    targ_viz['day'] = targ_viz['date'].dt.dayofyear
+    fig = px.line(targ_viz, x='hour', y='target_brightness', color='day', line_group='day', 
+              title='Seasonal Chart by Hour')
+    st.plotly_chart(fig)
+
+
+st.markdown('### Seasonality : Periodogram \n not sure about this one')
+with st.echo():
+    periodogram = pd.DataFrame({'Frequency': np.fft.fftfreq(len(targ_viz), d=(targ_viz['date'].iloc[1] - targ_viz['date'].iloc[0]).total_seconds()), 'Power': np.abs(np.fft.fft(targ_viz['target_brightness']))**2})
+    fig = go.Figure()
+    # Add a scatter plot for the periodogram
+    fig.add_trace(go.Scatter(x=np.log10(periodogram['Frequency']), y=10 * np.log10(periodogram['Power']),
+                            mode='lines', name='Periodogram'))
+    # Update layout
+    fig.update_layout(title='Periodogram',
+                    xaxis_title='Frequency (log scale)',
+                    yaxis_title='Power/Frequency (dB/Hz)')
+    # Display the Plotly figure in Streamlit
+    st.plotly_chart(fig)
+
+
+st.markdown('### Serial Dependence : Lag')
 with st.echo():
     targ_viz['lag_1'] = targ_viz['target_brightness'].shift(1)
     X = targ_viz.loc[:, ['lag_1']]
