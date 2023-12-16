@@ -5,6 +5,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 import plotly.express as px
 import plotly.graph_objects as go
+import pickle
 
 
 st.title('Data Preparation')
@@ -157,3 +158,20 @@ The most predictive feature for the target_brightness of a future step (=y_step_
 As expected from the data exploration the lag component has rather minute predictive influence on the next timestep.  
 If I would be able to make recommendations I'd suggest measuring the inlet brightness every 5 minutes if possible as it is the 2nd most predictive feature - if possible ofc.
 ''')
+
+st.markdown('''
+### Save data
+''')
+with st.echo():
+    # Save the split indices
+    split_indices = {
+        'X_cols': X.columns,
+        'y_cols': y.columns,
+        'X_train': X_train,
+        'X_test': X_test,
+        'y_train': y_train,
+        'y_test': y_test
+    }
+    # Save split indices to a file using pickle
+    with open('data/train_test_split_indices.pkl', 'wb') as file:
+        pickle.dump(split_indices, file)
