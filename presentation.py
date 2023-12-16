@@ -276,7 +276,7 @@ def repeat_elements(input_list, repeat_count):
     return [item for item in input_list for _ in range(repeat_count)]
 
 coefficients_df = pd.DataFrame({
-    "feature": feature_columns * 3,  # Repeat feature names for both sets
+    "feature": feature_columns * len(target_columns),  # Repeat feature names for both sets
     "coefficient": np.ravel(linear.coef_),
     "target": repeat_elements(target_columns, len(feature_columns))
 })
