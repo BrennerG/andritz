@@ -177,7 +177,6 @@ method = st.radio(
 with st.echo():
     if method == "Fill back":
         data = pd.merge(merged, targ, on='date', how='outer')
-        data['og_measurement'] = data['target_brightness'].isna() == False
         data['target_brightness'].fillna(method='bfill', inplace=True)
 
     elif method == "Downsampling":
@@ -219,7 +218,7 @@ st.markdown('''
 ### 2.4 Create Train/Test Splits
 ''')
 with st.echo():
-    target_columns = ['target_brightness'] + [col for col in data.columns if col.startswith('y_step_') or col=='og_measurement']
+    target_columns = ['target_brightness'] + [col for col in data.columns if col.startswith('y_step_')]
     feature_columns = [x for x in list(data.columns) if x not in target_columns]
     feature_columns.remove('date')
     X = data[feature_columns]
@@ -227,9 +226,9 @@ with st.echo():
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
 
-st.markdown('#### input features')
+st.markdown(F'#### input features {X.shape}')
 st.dataframe(X.head())
-st.markdown('#### target features')
+st.markdown(F'#### target features {y.shape}')
 st.dataframe(y.head())
 
 st.markdown('''
@@ -256,7 +255,7 @@ with st.echo():
             'train_r2_forecast' : train_r2_raw[-1], 
             'test_r2_forecast' : test_r2_raw[-1]
         }
-        # TODO raw values plot for multiple future steps
+        # TODO raw values plot for multiple future steps (for multiple r2 steps you see)
 
 st.markdown('''
 ## 3.1 Linear Regression (Baseline)
@@ -264,7 +263,7 @@ st.markdown('''
 
 with st.echo():
     linear = LinearRegression() # linear regression as baseline
-    linear .fit(X_train, y_train)
+    linear.fit(X_train, y_train)
     y_fit = pd.DataFrame(linear.predict(X_train), index=X_train.index, columns=target_columns)
     y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=target_columns)
     base_evalu = evaluate(y_fit, y_pred, y_train, y_test)
@@ -298,6 +297,7 @@ fig.update_layout(
     showlegend=True,  # Set to True to show the legend
 )
 st.plotly_chart(fig)
+# TODO this labberei is only relevant for lag=1 step=1 method=downsampling
 st.markdown('''
 Note that the coefficients for target_brightness (grey) are irrelevant here, since they try to predict the currently measured paper with the current data from the process.
 (The paper that is actually produced with these feature values is actually measured in the following step!)    
