@@ -160,19 +160,36 @@ with st.echo():
 st.dataframe(merged.head())
 
 st.markdown('''
-### 2.2 Downsampling
-Unfortunately the measurements for our target variable ``target_brightness`` are the finest granulated value we can go down to without imputing the target variable. However as a baseline we will downsample by only allowing values of the merged dataset where we have measurements of our target variable.  
-alternatives:
-- aggregate values between measurements
-- impute target variable
+### 2.2 Aggregation
+Unfortunately the measurements for our target variable ``target_brightness`` are the finest granulated value we can go down to without imputing the target variable, so some form of data aggregation has to happen.  
+options:
 ''')
+
+method = st.radio(
+    "Aggregation Method",
+    ["Fill back", "Downsampling", "Mean"],
+    captions = [
+        "Fill NaN target values backwards",
+        "Only take rows with a non-NaN target value", 
+        "Similar to 'Downsampling' but aggregate rows with NaN target values using mean()"
+                ])
+
 with st.echo():
-    downsampled = pd.merge(merged, targ, on='date', how='inner')
+    if method == "Fill back":
+        data = pd.merge(merged, targ, on='date', how='outer')
+        data['og_measurement'] = data['target_brightness'].isna() == False
+        data['target_brightness'].fillna(method='bfill', inplace=True)
 
-st.dataframe(downsampled.head())
+    elif method == "Downsampling":
+        data = pd.merge(merged, targ, on='date', how='inner')
 
-# TODO optional aggregate between measurements
-# TODO impute target variable? does that make sense?
+    elif method == "Mean":
+        data = None
+        raise NotImplementedError("pick another aggregation method")
+
+st.dataframe(data)
+# TODO optional aggregate features between measurements
+
 
 st.markdown('''
 ### 2.3 Lags / Steps
@@ -184,29 +201,29 @@ we also need to handle NaN values caused by the shifting
 ''')
 # TODO make num_lags and num_steps dynamic!
 # TODO option to fill or impute instead of dropna!
+num_lags = st.slider('lag', 1, 10, 1)
+num_steps = st.slider('steps', 1, 10, 1)
 with st.echo():
-    num_lags = 1 # create this many features from the past
-    for i in range(1, num_lags + 1):
-        downsampled[f'y_lag_{i}'] = downsampled['target_brightness'].shift(i)
+    for i in range(1, num_lags + 1): # create this many features from the past
+        data[f'y_lag_{i}'] = data['target_brightness'].shift(i)
     
-    num_steps = 1 # create this many targets from the future
-    for i in range(1, num_steps+ 1):
-        downsampled[f'y_step_{i}'] = downsampled['target_brightness'].shift(-i)
+    for i in range(1, num_steps+ 1): # create this many targets from the future
+        data[f'y_step_{i}'] = data['target_brightness'].shift(-i)
 
     # drop NaN value lines
-    downsampled.dropna(inplace=True)
+    data.dropna(inplace=True)
 
-st.dataframe(downsampled.head())
+st.dataframe(data.head())
 
 st.markdown('''
 ### 2.4 Create Train/Test Splits
 ''')
 with st.echo():
-    target_columns = ['target_brightness'] + [col for col in downsampled.columns if col.startswith('y_step_')]
-    feature_columns = [x for x in list(downsampled.columns) if x not in target_columns]
+    target_columns = ['target_brightness'] + [col for col in data.columns if col.startswith('y_step_') or col=='og_measurement']
+    feature_columns = [x for x in list(data.columns) if x not in target_columns]
     feature_columns.remove('date')
-    X = downsampled[feature_columns]
-    y = downsampled[target_columns]
+    X = data[feature_columns]
+    y = data[target_columns]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
 
@@ -220,10 +237,10 @@ st.markdown('''
 ''')
 with st.echo():
 
-    def evaluate(y_train :pd.DataFrame, y_fit :pd.DataFrame, y_pred :pd.DataFrame) -> dict:
+    def evaluate(y_fit :pd.DataFrame, y_pred :pd.DataFrame,  y_train :pd.DataFrame, y_test:pd.DataFrame) -> dict:
         # root mean squared error
         train_rmse = mean_squared_error(y_train, y_fit, squared=False)
-        test_rmse = mean_squared_error(y_test, y_pred, squared=False)
+        test_rmse = mean_squared_error(y_test, y_pred, squared=False) # TODO Y_TEST !!!!!
 
         # r squared
         train_r2 = r2_score(y_train, y_fit)
@@ -236,11 +253,10 @@ with st.echo():
             'test_rmse' : test_rmse, 
             'train_r2' : train_r2, 
             'test_r2' : test_r2, 
-            'train_r2_forecast' : train_r2_raw[1], 
-            'test_r2_forecast' : test_r2_raw[1]
+            'train_r2_forecast' : train_r2_raw[-1], 
+            'test_r2_forecast' : test_r2_raw[-1]
         }
-
-# TODO think about what the delta in the metric displays stand for... (vs baseline or vs fit?)
+        # TODO raw values plot for multiple future steps
 
 st.markdown('''
 ## 3.1 Linear Regression (Baseline)
@@ -248,11 +264,10 @@ st.markdown('''
 
 with st.echo():
     linear = LinearRegression() # linear regression as baseline
-    # model = MultiOutputRegressor(GradientBoostingRegressor(random_state=1)) alternative
     linear .fit(X_train, y_train)
-    y_fit = pd.DataFrame(linear.predict(X_train), index=X_train.index, columns=targ_features)
-    y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=targ_features)
-    base_evalu = evaluate(y_train, y_fit, y_pred)
+    y_fit = pd.DataFrame(linear.predict(X_train), index=X_train.index, columns=target_columns)
+    y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=target_columns)
+    base_evalu = evaluate(y_fit, y_pred, y_train, y_test)
 
 col1, col2, col3 = st.columns(3)
 col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
@@ -296,6 +311,7 @@ st.divider()
 st.markdown('''
 ## 3.2 Neural Network MLP Regressor
 ''')
+# # TODO takes forever with too many lags
 with st.echo():
     mlp = MultiOutputRegressor(
         MLPRegressor(
@@ -321,7 +337,7 @@ with st.echo():
     y_pred_scaled = pd.DataFrame(mlp.predict(X_test_scaled), index=X_test.index, columns=target_columns)
     y_fit = scaler_y.inverse_transform(y_fit_scaled) # reverse transform predictions
     y_pred = scaler_y.inverse_transform(y_pred_scaled) # reverse transform predictions
-    evalu = evaluate(y_train, y_fit, y_pred)
+    evalu = evaluate(y_fit, y_pred, y_train, y_test)
 
 col1, col2, col3 = st.columns(3)
 col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'], 3))
@@ -329,4 +345,3 @@ col2.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - ba
 col3.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'],3), round(base_evalu['test_r2_forecast'] - evalu['train_r2_forecast'], 3))
 
 # TODO ## 3.3 find a good model or at least automl
-
