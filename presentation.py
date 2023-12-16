@@ -33,6 +33,10 @@ We eagerly anticipate your participation in this challenge and look forward to r
 ''')
 st.divider()
 # TODO shorten the markdown comments / description to bullet points!
+# TODO test method=downsampling lag=1 step=1+
+# TODO test method=fillback lag=1 step=1
+#   needs proper evaluation method
+# TODO test method=fillback lag=1+ step=1+
 
 
 st.markdown('''
@@ -167,20 +171,19 @@ options:
 
 method = st.radio(
     "Aggregation Method",
-    ["Fill back", "Downsampling", "Mean"],
+    ["Downsampling", "Fill back", "Mean"],
     captions = [
-        "Fill NaN target values backwards",
         "Only take rows with a non-NaN target value", 
-        "Similar to 'Downsampling' but aggregate rows with NaN target values using mean()"
-                ])
+        "Fill NaN target values backwards",
+        "Similar to 'Downsampling' but aggregate rows with NaN target values using mean()"])
 
 with st.echo():
-    if method == "Fill back":
+    if method == "Downsampling":
+        data = pd.merge(merged, targ, on='date', how='inner')
+
+    elif method == "Fill back":
         data = pd.merge(merged, targ, on='date', how='outer')
         data['target_brightness'].fillna(method='bfill', inplace=True)
-
-    elif method == "Downsampling":
-        data = pd.merge(merged, targ, on='date', how='inner')
 
     elif method == "Mean":
         data = None
@@ -192,14 +195,12 @@ st.dataframe(data)
 
 st.markdown('''
 ### 2.3 Lags / Steps
+example:  
 - __Lead Time__ : 2h = 1 lag
 - __Forecast Horizon__ : 2h = 1 step
 
 this means we will look 1 step backwards and forwards for a prediction
-we also need to handle NaN values caused by the shifting
 ''')
-# TODO make num_lags and num_steps dynamic!
-# TODO option to fill or impute instead of dropna!
 num_lags = st.slider('lag', 1, 10, 1)
 num_steps = st.slider('steps', 1, 10, 1)
 with st.echo():
@@ -239,7 +240,7 @@ with st.echo():
     def evaluate(y_fit :pd.DataFrame, y_pred :pd.DataFrame,  y_train :pd.DataFrame, y_test:pd.DataFrame) -> dict:
         # root mean squared error
         train_rmse = mean_squared_error(y_train, y_fit, squared=False)
-        test_rmse = mean_squared_error(y_test, y_pred, squared=False) # TODO Y_TEST !!!!!
+        test_rmse = mean_squared_error(y_test, y_pred, squared=False)
 
         # r squared
         train_r2 = r2_score(y_train, y_fit)
@@ -274,10 +275,13 @@ col2.metric("r^2 (test)", round(base_evalu['test_r2'],3))
 col3.metric("r^2-forecast (test)", round(base_evalu['test_r2_forecast'],3))
 
 # PLOT COEFFICIENTS
+def repeat_elements(input_list, repeat_count):
+    return [item for item in input_list for _ in range(repeat_count)]
+
 coefficients_df = pd.DataFrame({
-    "feature": feature_columns * 2,  # Repeat feature names for both sets
-    "coefficient": list(linear.coef_[0]) + list(linear.coef_[1]),
-    "target": ["target_brightness"] * len(feature_columns) + ["y_step_1"] * len(feature_columns)
+    "feature": feature_columns * 3,  # Repeat feature names for both sets
+    "coefficient": np.ravel(linear.coef_),
+    "target": repeat_elements(target_columns, len(feature_columns))
 })
 
 # Create a bar chart with different bar colors for each set
@@ -296,7 +300,7 @@ fig.update_layout(
     yaxis_title="Coefficient Value",
     showlegend=True,  # Set to True to show the legend
 )
-st.plotly_chart(fig)
+st.plotly_chart(fig) # TODO optional allow this plot to show multiple y_steps
 # TODO this labberei is only relevant for lag=1 step=1 method=downsampling
 st.markdown('''
 Note that the coefficients for target_brightness (grey) are irrelevant here, since they try to predict the currently measured paper with the current data from the process.
@@ -308,10 +312,11 @@ If I would be able to make recommendations I'd suggest measuring the inlet brigh
 
 
 st.divider()
+'''
 st.markdown('''
 ## 3.2 Neural Network MLP Regressor
 ''')
-# # TODO takes forever with too many lags
+# # TODO takes forever with both fill back and downsampling? actually this net sucks anyway so we might drop it
 with st.echo():
     mlp = MultiOutputRegressor(
         MLPRegressor(
@@ -345,3 +350,4 @@ col2.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - ba
 col3.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'],3), round(base_evalu['test_r2_forecast'] - evalu['train_r2_forecast'], 3))
 
 # TODO ## 3.3 find a good model or at least automl
+'''
