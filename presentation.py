@@ -33,10 +33,9 @@ We eagerly anticipate your participation in this challenge and look forward to r
 ''')
 st.divider()
 # TODO shorten the markdown comments / description to bullet points!
-# TODO test method=downsampling lag=1 step=1+
-# TODO test method=fillback lag=1 step=1
-#   needs proper evaluation method
 # TODO test method=fillback lag=1+ step=1+
+# TODO test method=fillback lag=1 step=1
+#   needs proper evaluation method (with only the real values)
 
 
 st.markdown('''
@@ -144,7 +143,6 @@ linreg_viz_df = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_ind
 st.plotly_chart(px.line(linreg_viz_df, x='date', y=['target_brightness', 'lin_pred']))
 st.metric(F'coefficient: "timestep" for "target_brightness"', model.coef_[0])
 
-# TODO seasonality ?
 # TODO serial dependency dynamic lag plots
 # TODO serial dependency autocorrelation plot and what it suggests!
 
@@ -190,7 +188,6 @@ with st.echo():
         raise NotImplementedError("pick another aggregation method")
 
 st.dataframe(data)
-# TODO optional aggregate features between measurements
 
 
 st.markdown('''
@@ -256,7 +253,7 @@ with st.echo():
             'train_r2_forecast' : train_r2_raw[-1], 
             'test_r2_forecast' : test_r2_raw[-1]
         }
-        # TODO raw values plot for multiple future steps (for multiple r2 steps you see)
+        # IDEA optional raw values plot for multiple future steps (for multiple r2 steps you see)
 
 st.markdown('''
 ## 3.1 Linear Regression (Baseline)
@@ -300,7 +297,7 @@ fig.update_layout(
     yaxis_title="Coefficient Value",
     showlegend=True,  # Set to True to show the legend
 )
-st.plotly_chart(fig) # TODO optional allow this plot to show multiple y_steps
+st.plotly_chart(fig) 
 # TODO this labberei is only relevant for lag=1 step=1 method=downsampling
 st.markdown('''
 Note that the coefficients for target_brightness (grey) are irrelevant here, since they try to predict the currently measured paper with the current data from the process.
