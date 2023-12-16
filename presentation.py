@@ -33,9 +33,9 @@ We eagerly anticipate your participation in this challenge and look forward to r
 ''')
 st.divider()
 # TODO shorten the markdown comments / description to bullet points!
-# TODO test method=fillback lag=1+ step=1+
 # TODO test method=fillback lag=1 step=1
 #   needs proper evaluation method (with only the real values)
+#   is this a stupid method? ofc the coef between lag1 and y is high: it's the same value most of the time...
 
 
 st.markdown('''
