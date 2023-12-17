@@ -33,14 +33,17 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations)
-# TODO test method=fillback lag=1 step=1
-#   needs proper evaluation method (with only the real values)
-#   is this a stupid method? ofc the coef between lag1 and y is high: it's the same value most of the time...
-# TODO MLP takes forever...
+# TODO make a residual kind of fitted vs test data plot!
+# TODO shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
 # TODO write functions (e.g. ma_viz)
+# TODO deploy...
+# ---
 # TODO optional 3.3 find a good model or at least automl
-
+# TODO optional plot the R2 raw values for multiple future steps
+# ---
+# IDEAS and Thoughts
+# - why is the r2 of lag2 step2 so much better than lag1 step1?
+# - but why does it latch on the lag arguments instantly?
 
 st.markdown('''
 # 1 Data Exploration
@@ -135,7 +138,7 @@ moving_average = targ_viz['target_brightness'].rolling(
 ).mean()
 targ_viz['target_brightness'] = moving_average
 
-# linear regression: step -> inlet_brightness
+# linear regression: step -> target_brightness
 X = targ_viz.loc[:, ['step']]
 y = targ_viz.loc[:, 'target_brightness']
 model = LinearRegression()
@@ -147,7 +150,7 @@ linreg_viz_df = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_ind
 st.plotly_chart(px.line(linreg_viz_df, x='date', y=['target_brightness', 'lin_pred']))
 st.metric(F'coefficient: "timestep" for "target_brightness"', model.coef_[0])
 
-st.markdown('### Autocorrelation with lags')
+st.markdown('### Autocorrelation with lags (target variable)')
 lags = range(1, 30)  # Choose the number of lags to include in the plot
 autocorrelation_values = [targ_viz['target_brightness'].autocorr(lag=lag) for lag in lags]
 fig = go.Figure()
@@ -179,23 +182,25 @@ options:
 
 method = st.radio(
     "Aggregation Method",
-    ["Downsampling", "Fill back", "Mean"],
+    ["Downsampling", "Fill", "Interpolation"],
     captions = [
         "Only take rows with a non-NaN target value", 
-        "Fill NaN target values backwards",
-        "Similar to 'Downsampling' but aggregate rows with NaN target values using mean()"])
+        "Fill NaN target values forward",
+        "Linear Interpolation of target values"])
 
 with st.echo():
     if method == "Downsampling":
         data = pd.merge(merged, targ, on='date', how='inner')
 
-    elif method == "Fill back":
+    elif method == "Fill":
         data = pd.merge(merged, targ, on='date', how='outer')
-        data['target_brightness'].fillna(method='bfill', inplace=True)
+        data['target_brightness'].fillna(method='ffill', inplace=True)
+        downsampled = pd.merge(merged, targ, on='date', how='inner')
 
-    elif method == "Mean":
-        data = None
-        raise NotImplementedError("pick another aggregation method")
+    elif method == "Interpolation":
+        data = pd.merge(merged, targ, on='date', how='outer')
+        data['target_brightness'] = data['target_brightness'].interpolate(method='linear')
+        downsampled = pd.merge(merged, targ, on='date', how='inner')
 
 st.dataframe(data)
 
@@ -208,8 +213,8 @@ example:
 
 this means we will look 1 step backwards and forwards for a prediction
 ''')
-num_lags = st.slider('lag', 1, 10, 1)
-num_steps = st.slider('steps', 1, 10, 1)
+num_lags = st.slider('lag', 1, 10, 2)
+num_steps = st.slider('steps', 1, 10, 2)
 with st.echo():
     for i in range(1, num_lags + 1): # create this many features from the past
         data[f'y_lag_{i}'] = data['target_brightness'].shift(i)
@@ -263,7 +268,33 @@ with st.echo():
             'train_r2_forecast' : train_r2_raw[-1], 
             'test_r2_forecast' : test_r2_raw[-1]
         }
-        # IDEA optional raw values plot for multiple future steps (for multiple r2 steps you see)
+    
+    def evaluate_filled(downsampled :pd.DataFrame, model):
+        for i in range(1, num_lags + 1): # create this many features from the past
+            downsampled[f'y_lag_{i}'] = downsampled['target_brightness'].shift(i)
+        
+        for i in range(1, num_steps+ 1): # create this many targets from the future
+            downsampled[f'y_step_{i}'] = downsampled['target_brightness'].shift(-i)
+
+        # drop NaN value lines
+        downsampled.dropna(inplace=True)
+
+        # ---
+
+        target_columns = ['target_brightness'] + [col for col in downsampled.columns if col.startswith('y_step_')]
+        feature_columns = [x for x in list( downsampled.columns) if x not in target_columns]
+        feature_columns.remove('date')
+        X = downsampled[feature_columns]
+        y = downsampled[target_columns]
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
+
+        # ---
+        
+        y_fit = pd.DataFrame(linear.predict(X_train), index=X_train.index, columns=target_columns)
+        y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=target_columns)
+
+        return evaluate(y_fit, y_pred, y_train, y_test)
 
 st.markdown('''
 ## 3.1 Linear Regression (Baseline)
@@ -274,7 +305,7 @@ with st.echo():
     linear.fit(X_train, y_train)
     y_fit = pd.DataFrame(linear.predict(X_train), index=X_train.index, columns=target_columns)
     y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=target_columns)
-    base_evalu = evaluate(y_fit, y_pred, y_train, y_test)
+    base_evalu = evaluate(y_fit, y_pred, y_train, y_test) if method=="Downsampling" else evaluate_filled(downsampled, linear)
 
 col1, col2, col3 = st.columns(3)
 col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
@@ -318,7 +349,6 @@ If I would be able to make recommendations I'd suggest measuring the inlet brigh
 
 
 st.divider()
-'''
 st.markdown('''
 ## 3.2 Neural Network MLP Regressor
 ''')
@@ -347,10 +377,9 @@ with st.echo():
     y_pred_scaled = pd.DataFrame(mlp.predict(X_test_scaled), index=X_test.index, columns=target_columns)
     y_fit = scaler_y.inverse_transform(y_fit_scaled) # reverse transform predictions
     y_pred = scaler_y.inverse_transform(y_pred_scaled) # reverse transform predictions
-    evalu = evaluate(y_fit, y_pred, y_train, y_test)
+    evalu = evaluate(y_fit, y_pred, y_train, y_test) if method=="Downsampling" else evaluate_filled(downsampled, mlp)
 
 col1, col2, col3 = st.columns(3)
 col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'], 3))
 col2.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - base_evalu['test_r2'], 3))
 col3.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'],3), round(base_evalu['test_r2_forecast'] - evalu['train_r2_forecast'], 3))
-'''
