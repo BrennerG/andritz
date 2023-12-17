@@ -28,3 +28,6 @@ streamlit run presentation.py
 `development` contains the streamlit notebooks created during development, consider these as irrelevant notes.  
 `presentation.py` is the streamlit notebook you are looking for (see run command above)
 `requirements.txt` is the pip requirements file (see installation above)
+
+---
+you can also find a hosted version of this notebook at https://andritzchallenge.streamlit.app
