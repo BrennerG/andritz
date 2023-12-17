@@ -33,7 +33,6 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO make a residual kind of fitted vs test data plot!
 # TODO shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
 # TODO write functions (e.g. ma_viz)
 # TODO deploy...
@@ -346,6 +345,17 @@ The most predictive feature for the target_brightness of a future step (=y_step_
 As expected from the data exploration the lag component has rather minute predictive influence on the next timestep.  
 If I would be able to make recommendations I'd suggest measuring the inlet brightness every 5 minutes if possible as it is the 2nd most predictive feature - if possible ofc.
 ''')
+
+# Original Data vs Prediction
+trace1 = go.Scatter(x=data['date'], y=data['target_brightness'], mode='lines', name='original data')
+traces = [trace1]
+for target in target_columns:
+    traces.append(go.Scatter(x=data['date'], y=y_fit[target], mode='lines', name=target+'_fit'))
+    traces.append(go.Scatter(x=data.tail(y_pred.shape[0])['date'], y=y_pred[target], mode='lines', name=target+'_pred'))
+
+layout = go.Layout(title='Original Data vs Prediction', xaxis=dict(title='date'), yaxis=dict(title='target_brightness'))
+fig = go.Figure(data=traces, layout=layout)
+st.plotly_chart(fig)
 
 
 st.divider()
