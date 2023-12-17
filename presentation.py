@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -33,8 +35,8 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
 # TODO write functions (e.g. ma_viz)
+# TODO narrate! shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
 # TODO deploy...
 # ---
 # TODO optional 3.3 find a good model or at least automl
@@ -68,90 +70,55 @@ st.markdown('#### Target')
 st.dataframe(targ.head(10))
 
 st.markdown('## 1.1 Stationarity')
+
+with st.echo(): 
+    def moving_average_plot(feature_set :pd.DataFrame, selected_feature :str, window :int) -> Tuple[go.Figure, float]:
+        feature_set['step'] = np.arange(len(feature_set.index))
+
+        # create moving average
+        moving_average = feature_set[selected_feature].rolling(
+            window=window,      
+            center=True,        
+            min_periods=round(window/2),     
+        ).mean()
+        feature_set['moving_avg_'+selected_feature] = moving_average
+
+        # linear regression
+        X =feature_set.loc[:, ['step']]
+        y =feature_set.loc[:, 'moving_avg_'+selected_feature]
+        model = LinearRegression()
+        model.fit(X, y)
+        y_pred = pd.Series(model.predict(X), index=X.index, name='lin_reg')
+        linreg_viz_df = pd.merge(feature_set, y_pred.to_frame(), left_index=True, right_index=True)
+        fig = px.line(linreg_viz_df, x='date', y=['moving_avg_'+selected_feature, 'lin_reg'])
+        fig.update_layout(title=f'Moving Average for {selected_feature}', xaxis_title='Date', yaxis_title=selected_feature)
+        return fig, model.coef_[0]
+
 st.markdown('### Feature Set 1')
-selected_feature = st.selectbox(
-    "Moving Average for:",
-    [x for x in inp1_features if x != 'date'],
-    index=0,
-)
+selected_feature = st.selectbox("Moving Average for:", [x for x in inp1_features if x != 'date'], index=0,)
 window = st.slider("moving average (window)", 1, 3000, 288)
-
-with st.echo(): # TODO write a function for this - repeating this code is embarassing!
-    ma_viz = inp1.copy()
-    ma_viz['step'] = np.arange(len(ma_viz.index))
-
-    # create moving average
-    moving_average = ma_viz[selected_feature].rolling(
-        window=window,      
-        center=True,        
-        min_periods=round(window/2),     
-    ).mean()
-    ma_viz['moving_avg_'+selected_feature] = moving_average
-
-    # linear regression
-    X = ma_viz.loc[:, ['step']]
-    y = ma_viz.loc[:, 'moving_avg_'+selected_feature]
-    model = LinearRegression()
-    model.fit(X, y)
-    y_pred = pd.Series(model.predict(X), index=X.index, name='lin_pred')
-    linreg_viz_df = pd.merge(ma_viz, y_pred.to_frame(), left_index=True, right_index=True)
-
-st.plotly_chart(px.line(linreg_viz_df, x='date', y=['moving_avg_'+selected_feature, 'lin_pred']))
-st.metric(F'coefficient: "timestep" for "{selected_feature}"', model.coef_[0])
-#st.plotly_chart(px.line(ma_viz, x='date', y='moving_avg_'+selected_feature))
+fig, coef = moving_average_plot(inp1, selected_feature=selected_feature, window=window)
+st.plotly_chart(fig)
+st.metric(F'coefficient: "timestep" for "{selected_feature}"', coef)
 
 st.divider()
 st.markdown('### Feature Set 2 (inlet_brightness)')
 window2 = st.slider("feature set 2: moving average (window)", 1, 100, 6)
-ma_viz2 = inp2.copy()
-ma_viz2['step'] = np.arange(len(ma_viz2.index))
-moving_average = ma_viz2['inlet_brightness'].rolling(
-    window=window2,      
-    center=True,        
-    min_periods=round(window2/2),     
-).mean()
-ma_viz2['inlet_brightness'] = moving_average
-
-# linear regression: step -> inlet_brightness
-X = ma_viz2.loc[:, ['step']]
-y = ma_viz2.loc[:, 'inlet_brightness']
-model = LinearRegression()
-model.fit(X, y)
-y_pred = pd.Series(model.predict(X), index=X.index, name='lin_pred')
-linreg_viz_df = pd.merge(ma_viz2, y_pred.to_frame(), left_index=True, right_index=True)
-
-#st.line_chart(data=linreg_viz_df, x='date', y=['inlet_brightness', 'lin_pred'])
-st.plotly_chart(px.line(linreg_viz_df, x='date', y=['inlet_brightness', 'lin_pred']))
-st.metric(F'coefficient: "timestep" for "inlet_brightness"', model.coef_[0])
-
+fig, coef = moving_average_plot(inp2, selected_feature="inlet_brightness", window=window2)
+st.plotly_chart(fig)
+st.metric(F'coefficient: "timestep" for inlet_brightness', coef)
 
 st.divider()
 st.markdown('### Target Variable (target_brightness)')
 window3 = st.slider("target: moving average (window)", 1, 100, 6)
-targ_viz = targ.copy()
-targ_viz['step'] = np.arange(len(targ_viz.index))
-moving_average = targ_viz['target_brightness'].rolling(
-    window=window3,      
-    center=True,        
-    min_periods=round(window3/2),     
-).mean()
-targ_viz['target_brightness'] = moving_average
+fig, coef = moving_average_plot(targ, selected_feature='target_brightness', window=window3)
+st.plotly_chart(fig)
+st.metric(F'coefficient: "timestep" for target_brightness', coef)
 
-# linear regression: step -> target_brightness
-X = targ_viz.loc[:, ['step']]
-y = targ_viz.loc[:, 'target_brightness']
-model = LinearRegression()
-model.fit(X, y)
-y_pred = pd.Series(model.predict(X), index=X.index, name='lin_pred')
-linreg_viz_df = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_index=True)
-
-#st.line_chart(data=linreg_viz_df, x='date', y=['inlet_brightness', 'lin_pred'])
-st.plotly_chart(px.line(linreg_viz_df, x='date', y=['target_brightness', 'lin_pred']))
-st.metric(F'coefficient: "timestep" for "target_brightness"', model.coef_[0])
-
+st.divider()
 st.markdown('### Autocorrelation with lags (target variable)')
 lags = range(1, 30)  # Choose the number of lags to include in the plot
-autocorrelation_values = [targ_viz['target_brightness'].autocorr(lag=lag) for lag in lags]
+autocorrelation_values = [targ['target_brightness'].autocorr(lag=lag) for lag in lags]
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=list(lags), y=autocorrelation_values, mode='markers+lines', name='Autocorrelation'))
 fig.update_layout(title='Autocorrelation Plot', xaxis_title='Lag', yaxis_title='Autocorrelation')
