@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
@@ -32,10 +33,13 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO shorten the markdown comments / description to bullet points!
+# TODO shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations)
 # TODO test method=fillback lag=1 step=1
 #   needs proper evaluation method (with only the real values)
 #   is this a stupid method? ofc the coef between lag1 and y is high: it's the same value most of the time...
+# TODO MLP takes forever...
+# TODO write functions (e.g. ma_viz)
+# TODO optional 3.3 find a good model or at least automl
 
 
 st.markdown('''
@@ -143,8 +147,14 @@ linreg_viz_df = pd.merge(targ_viz, y_pred.to_frame(), left_index=True, right_ind
 st.plotly_chart(px.line(linreg_viz_df, x='date', y=['target_brightness', 'lin_pred']))
 st.metric(F'coefficient: "timestep" for "target_brightness"', model.coef_[0])
 
-# TODO serial dependency dynamic lag plots
-# TODO serial dependency autocorrelation plot and what it suggests!
+st.markdown('### Autocorrelation with lags')
+lags = range(1, 30)  # Choose the number of lags to include in the plot
+autocorrelation_values = [targ_viz['target_brightness'].autocorr(lag=lag) for lag in lags]
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=list(lags), y=autocorrelation_values, mode='markers+lines', name='Autocorrelation'))
+fig.update_layout(title='Autocorrelation Plot', xaxis_title='Lag', yaxis_title='Autocorrelation')
+st.plotly_chart(fig)
+
 
 st.divider()
 st.markdown('''
@@ -298,7 +308,6 @@ fig.update_layout(
     showlegend=True,  # Set to True to show the legend
 )
 st.plotly_chart(fig) 
-# TODO this labberei is only relevant for lag=1 step=1 method=downsampling
 st.markdown('''
 Note that the coefficients for target_brightness (grey) are irrelevant here, since they try to predict the currently measured paper with the current data from the process.
 (The paper that is actually produced with these feature values is actually measured in the following step!)    
@@ -313,7 +322,6 @@ st.divider()
 st.markdown('''
 ## 3.2 Neural Network MLP Regressor
 ''')
-# # TODO takes forever with both fill back and downsampling? actually this net sucks anyway so we might drop it
 with st.echo():
     mlp = MultiOutputRegressor(
         MLPRegressor(
@@ -345,6 +353,4 @@ col1, col2, col3 = st.columns(3)
 col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'], 3))
 col2.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - base_evalu['test_r2'], 3))
 col3.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'],3), round(base_evalu['test_r2_forecast'] - evalu['train_r2_forecast'], 3))
-
-# TODO ## 3.3 find a good model or at least automl
 '''
