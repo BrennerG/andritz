@@ -35,12 +35,10 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO add seasonal plot
 # TODO deploy...
 # ---
 # OPTIONALs
-# TODO 3.3 find a good model or at least automl
-# TODO show more in explo! what to talk about?
+# TODO 3.3 find a cool model or at least automl
 # ---
 # IDEAS and Thoughts
 # - why is the r2 of lag2 step2 so much better than lag1 step1?
@@ -159,7 +157,17 @@ fig.add_trace(go.Scatter(x=list(lags), y=autocorrelation_values, mode='markers+l
 fig.update_layout(title='Autocorrelation Plot', xaxis_title='Lag', yaxis_title='Autocorrelation')
 st.plotly_chart(fig)
 
+st.divider()
+st.markdown('### Seasonality : Hours')
+targ_viz = targ.copy()
+targ_viz['hour'] = targ_viz['date'].dt.hour
+targ_viz['day'] = targ_viz['date'].dt.dayofyear
+fig = px.line(targ_viz, x='hour', y='target_brightness', color='day', line_group='day', title='Seasonal Chart by Hour')
+st.plotly_chart(fig)
+st.markdown('There seems to be no seasonal patterns during the day')
 
+
+st.divider()
 st.markdown('''
 ## 2 Data Preparation
 ''')
