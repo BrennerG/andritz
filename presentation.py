@@ -35,8 +35,6 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO narrate! shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
-# TODO beautify mlp evaluation
 # TODO add seasonal plot
 # TODO deploy...
 # ---
@@ -310,6 +308,32 @@ def evaluate_filled(downsampled :pd.DataFrame, model):
 
     return evaluate(y_fit, y_pred, y_train, y_test)
 
+def data_vs_prediction_plot(data :pd.DataFrame, target_columns :list, y_fit :pd.DataFrame, y_pred :pd.DataFrame) -> go.Figure:
+    trace1 = go.Scatter(x=data['date'], y=data['target_brightness'], mode='lines', name='original data')
+    traces = [trace1]
+    for target in target_columns:
+        traces.append(go.Scatter(x=data['date'], y=y_fit[target], mode='lines', name=target+'_fit'))
+        traces.append(go.Scatter(x=data.tail(y_pred.shape[0])['date'], y=y_pred[target], mode='lines', name=target+'_pred'))
+
+    layout = go.Layout(title='Original Data vs Prediction', xaxis=dict(title='date'), yaxis=dict(title='target_brightness'))
+    fig = go.Figure(data=traces, layout=layout)
+    return fig
+
+RAW_METRICS_DIC = {
+    'RMSE': ['train_rmse_raw', 'test_rmse_raw'],
+    'MAE': ['train_mae_raw', 'test_mae_raw'],
+    'R^2': ['train_r2_raw', 'test_r2_raw']
+}
+
+def metrics_over_forecast_plot(selected_metric:str, evaluation_dic:dict):
+    traces = []
+    for sel in RAW_METRICS_DIC[selected_metric]:
+        traces.append(go.Scatter(x=np.arange(0,len(evaluation_dic[sel])), y=evaluation_dic[sel], mode='lines', name=sel))
+    layout = go.Layout(title=f'Forecast Horizon: {selected_metric}', xaxis=dict(title='steps'), yaxis=dict(title=selected_metric))
+    fig = go.Figure(data=traces, layout=layout)
+    return fig
+
+
 st.markdown('''
 ## 3.1 Linear Regression (Baseline)
 ''')
@@ -322,15 +346,7 @@ with st.echo():
     base_evalu = evaluate(y_fit, y_pred, y_train, y_test) if method=="Downsampling" else evaluate_filled(downsampled, linear)
 
 # Original Data vs Prediction
-trace1 = go.Scatter(x=data['date'], y=data['target_brightness'], mode='lines', name='original data')
-traces = [trace1]
-for target in target_columns:
-    traces.append(go.Scatter(x=data['date'], y=y_fit[target], mode='lines', name=target+'_fit'))
-    traces.append(go.Scatter(x=data.tail(y_pred.shape[0])['date'], y=y_pred[target], mode='lines', name=target+'_pred'))
-
-layout = go.Layout(title='Original Data vs Prediction', xaxis=dict(title='date'), yaxis=dict(title='target_brightness'))
-fig = go.Figure(data=traces, layout=layout)
-st.plotly_chart(fig)
+st.plotly_chart(data_vs_prediction_plot(data, target_columns,  y_fit ,y_pred))
 
 # show metrics
 st.markdown('#### Evaluation Metrics')
@@ -342,18 +358,8 @@ col2.metric("MAE (test)", round(base_evalu['test_mae'],3))
 col3.metric("r^2 (train)", round(base_evalu['train_r2'],3))
 col3.metric("r^2 (test)", round(base_evalu['test_r2'],3))
 
-raw_metrics_dic = {
-    'RMSE': ['train_rmse_raw', 'test_rmse_raw'],
-    'MAE': ['train_mae_raw', 'test_mae_raw'],
-    'R^2': ['train_r2_raw', 'test_r2_raw']
-}
-selected_metric = st.selectbox("plot metric over forecast horizon", raw_metrics_dic.keys(), index=2)
-traces = []
-for sel in raw_metrics_dic[selected_metric]:
-    traces.append(go.Scatter(x=np.arange(0,len(base_evalu[sel])), y=base_evalu[sel], mode='lines', name=sel))
-layout = go.Layout(title=f'Forecast Horizon: {selected_metric}', xaxis=dict(title='steps'), yaxis=dict(title=selected_metric))
-fig = go.Figure(data=traces, layout=layout)
-st.plotly_chart(fig)
+selected_metric = st.selectbox("plot metric over forecast horizon", RAW_METRICS_DIC.keys(), index=2)
+st.plotly_chart(metrics_over_forecast_plot(selected_metric, base_evalu))
 st.markdown('''
 This plot allows us to see the evaluated metrics for the different target variables (=forecasting steps).  
 It allows us to see how well the model predicts on any step into the future.  
@@ -425,18 +431,18 @@ with st.echo():
     y_pred = scaler_y.inverse_transform(y_pred_scaled) # reverse transform predictions
     evalu = evaluate(y_fit, y_pred, y_train, y_test) if method=="Downsampling" else evaluate_filled(downsampled, mlp)
 
-#col1, col2, col3, col4 = st.columns(4)
-#col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'], 3))
-#col2.metric("MAE (test)", round(base_evalu['test_mae'],3), round(evalu['test_mae'] - base_evalu['test_mae'], 3))
-#col3.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - base_evalu['test_r2'], 3))
-#col4.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'][-1],3), round(base_evalu['test_r2_forecast'][-1] - evalu['train_r2_forecast'][-1], 3))
+# Original Data vs Prediction
+st.plotly_chart(data_vs_prediction_plot(data, target_columns, pd.DataFrame(y_fit, columns=target_columns), pd.DataFrame(y_pred, columns=target_columns)))
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("RMSE (train)", round(base_evalu['train_rmse'],3))
-col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
-col2.metric("MAE (train)", round(base_evalu['train_mae'],3))
-col2.metric("MAE (test)", round(base_evalu['test_mae'],3))
-col3.metric("r^2 (train)", round(base_evalu['train_r2'],3))
-col3.metric("r^2 (test)", round(base_evalu['test_r2'],3))
-col4.metric("r^2-forecast (train)", round(base_evalu['train_r2_raw'][-1],3))
-col4.metric("r^2-forecast (test)", round(base_evalu['test_r2_raw'][-1],3))
+# show metrics
+st.markdown('#### Evaluation Metrics')
+col1, col2, col3 = st.columns(3)
+col1.metric("RMSE (train)", round(evalu['train_rmse'],3), round(evalu['train_rmse'] - base_evalu['train_rmse'],2))
+col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'],2))
+col2.metric("MAE (train)", round(evalu['train_mae'],3), round(evalu['train_mae'] - base_evalu['train_mae'], 2))
+col2.metric("MAE (test)", round(evalu['test_mae'],3), round(evalu['test_mae'] - base_evalu['test_mae'],2))
+col3.metric("r^2 (train)", round(evalu['train_r2'],3), round(evalu['train_r2'] - base_evalu['train_r2'],2))
+col3.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - base_evalu['test_r2'],2))
+
+selected_metric2 = st.selectbox("plot metric over forecast horizon:", RAW_METRICS_DIC.keys(), index=2)
+st.plotly_chart(metrics_over_forecast_plot(selected_metric2, evalu))
