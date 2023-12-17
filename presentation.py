@@ -180,18 +180,23 @@ example:
 
 this means we will look 1 step backwards and forwards for a prediction
 ''')
+with st.echo():
+    def make_lags_and_steps(data :pd.DataFrame, num_lags :int, num_steps :int) -> pd.DataFrame:
+        for i in range(1, num_lags + 1): # create this many features from the past
+            data[f'y_lag_{i}'] = data['target_brightness'].shift(i)
+        
+        for i in range(1, num_steps+ 1): # create this many targets from the future
+            data[f'y_step_{i}'] = data['target_brightness'].shift(-i)
+
+        # drop NaN value lines
+        data = data.dropna()
+
+        return data
+
 num_lags = st.slider('lag', 1, 10, 2)
 num_steps = st.slider('steps', 1, 10, 2)
-with st.echo():
-    for i in range(1, num_lags + 1): # create this many features from the past
-        data[f'y_lag_{i}'] = data['target_brightness'].shift(i)
-    
-    for i in range(1, num_steps+ 1): # create this many targets from the future
-        data[f'y_step_{i}'] = data['target_brightness'].shift(-i)
-
-    # drop NaN value lines
-    data.dropna(inplace=True)
-
+with st.echo(): 
+    data = make_lags_and_steps(data, num_lags, num_steps)
 st.dataframe(data.head())
 
 st.markdown('''
@@ -210,6 +215,7 @@ st.markdown(F'#### input features {X.shape}')
 st.dataframe(X.head())
 st.markdown(F'#### target features {y.shape}')
 st.dataframe(y.head())
+
 
 st.markdown('''
 # 3. Model Training and Evaluation
@@ -236,32 +242,20 @@ with st.echo():
             'test_r2_forecast' : test_r2_raw[-1]
         }
     
-    def evaluate_filled(downsampled :pd.DataFrame, model):
-        for i in range(1, num_lags + 1): # create this many features from the past
-            downsampled[f'y_lag_{i}'] = downsampled['target_brightness'].shift(i)
-        
-        for i in range(1, num_steps+ 1): # create this many targets from the future
-            downsampled[f'y_step_{i}'] = downsampled['target_brightness'].shift(-i)
+def evaluate_filled(downsampled :pd.DataFrame, model):
+    downsampled = make_lags_and_steps(downsampled, num_lags, num_steps)
 
-        # drop NaN value lines
-        downsampled.dropna(inplace=True)
+    target_columns = ['target_brightness'] + [col for col in downsampled.columns if col.startswith('y_step_')]
+    feature_columns = [x for x in list( downsampled.columns) if x not in target_columns]
+    feature_columns.remove('date')
+    X = downsampled[feature_columns]
+    y = downsampled[target_columns]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
 
-        # ---
+    y_fit = pd.DataFrame(model.predict(X_train), index=X_train.index, columns=target_columns)
+    y_pred = pd.DataFrame(model.predict(X_test), index=X_test.index, columns=target_columns)
 
-        target_columns = ['target_brightness'] + [col for col in downsampled.columns if col.startswith('y_step_')]
-        feature_columns = [x for x in list( downsampled.columns) if x not in target_columns]
-        feature_columns.remove('date')
-        X = downsampled[feature_columns]
-        y = downsampled[target_columns]
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
-
-        # ---
-        
-        y_fit = pd.DataFrame(linear.predict(X_train), index=X_train.index, columns=target_columns)
-        y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=target_columns)
-
-        return evaluate(y_fit, y_pred, y_train, y_test)
+    return evaluate(y_fit, y_pred, y_train, y_test)
 
 st.markdown('''
 ## 3.1 Linear Regression (Baseline)
@@ -280,15 +274,12 @@ col2.metric("r^2 (test)", round(base_evalu['test_r2'],3))
 col3.metric("r^2-forecast (test)", round(base_evalu['test_r2_forecast'],3))
 
 # PLOT COEFFICIENTS
-def repeat_elements(input_list, repeat_count):
-    return [item for item in input_list for _ in range(repeat_count)]
-
 coefficients_df = pd.DataFrame({
     "feature": feature_columns * len(target_columns),  # Repeat feature names for both sets
     "coefficient": np.ravel(linear.coef_),
-    "target": repeat_elements(target_columns, len(feature_columns))
+    # "target": repeat_elements(target_columns, len(feature_columns))
+    "target": [item for item in target_columns for _ in range(len(feature_columns))]
 })
-
 # Create a bar chart with different bar colors for each set
 fig = px.bar(
     coefficients_df,
@@ -306,6 +297,7 @@ fig.update_layout(
     showlegend=True,  # Set to True to show the legend
 )
 st.plotly_chart(fig) 
+
 st.markdown('''
 Note that the coefficients for target_brightness (grey) are irrelevant here, since they try to predict the currently measured paper with the current data from the process.
 (The paper that is actually produced with these feature values is actually measured in the following step!)    
