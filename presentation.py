@@ -73,6 +73,7 @@ st.markdown('## 1.1 Stationarity')
 
 with st.echo(): 
     def moving_average_plot(feature_set :pd.DataFrame, selected_feature :str, window :int) -> Tuple[go.Figure, float]:
+        feature_set = feature_set.copy()
         feature_set['step'] = np.arange(len(feature_set.index))
 
         # create moving average
