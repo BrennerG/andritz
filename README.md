@@ -16,3 +16,15 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 
 ---
+
+## Setup
+```
+pip install -r requirements.txt
+streamlit run presentation.py
+```
+
+## Files
+`data` contains the raw data for the streamlit notebooks.  
+`development` contains the streamlit notebooks created during development, consider these as irrelevant notes.  
+`presentation.py` is the streamlit notebook you are looking for (see run command above)
+`requirements.txt` is the pip requirements file (see installation above)
