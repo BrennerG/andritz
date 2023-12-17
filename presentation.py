@@ -13,7 +13,7 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
 
 
@@ -35,16 +35,23 @@ __4 Code Submission__: Include the complete code of your work, ensuring it is ex
 We eagerly anticipate your participation in this challenge and look forward to receiving your submission by __Tuesday, 19th December, before 1 PM__. Following your submission, we will arrange a Microsoft Teams meeting to discuss your findings in detail.
 ''')
 st.divider()
-# TODO write functions (e.g. ma_viz)
 # TODO narrate! shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
 # TODO deploy...
 # ---
-# TODO optional 3.3 find a good model or at least automl
-# TODO optional plot the R2 raw values for multiple future steps
+# OPTIONALs
+# TODO show train eval metrics and add MAE
+# TODO show more in explo! what to talk about?
+# TODO plot the R2 raw values for multiple future steps
+# TODO 3.3 find a good model or at least automl
 # ---
 # IDEAS and Thoughts
 # - why is the r2 of lag2 step2 so much better than lag1 step1?
 # - but why does it latch on the lag arguments instantly?
+# ---
+# FUTURE WORK
+# - Feature selection and Feature Mutation
+# - cool neural model
+# - talk to an expert lol
 
 st.markdown('''
 # 1 Data Exploration
@@ -126,7 +133,6 @@ fig.update_layout(title='Autocorrelation Plot', xaxis_title='Lag', yaxis_title='
 st.plotly_chart(fig)
 
 
-st.divider()
 st.markdown('''
 ## 2 Data Preparation
 ''')
@@ -226,6 +232,8 @@ with st.echo():
         # root mean squared error
         train_rmse = mean_squared_error(y_train, y_fit, squared=False)
         test_rmse = mean_squared_error(y_test, y_pred, squared=False)
+        train_rmse_raw = mean_squared_error(y_train, y_fit, squared=False, multioutput='raw_values')
+        test_rmse_raw = mean_squared_error(y_test, y_pred, squared=False, multioutput='raw_values')
 
         # r squared
         train_r2 = r2_score(y_train, y_fit)
@@ -233,13 +241,25 @@ with st.echo():
         train_r2_raw = r2_score(y_train, y_fit, multioutput='raw_values')
         test_r2_raw = r2_score(y_test, y_pred, multioutput='raw_values')
 
+        # mean absolute error
+        train_mae = mean_absolute_error(y_train, y_fit)
+        test_mae = mean_absolute_error(y_test, y_pred)
+        train_mae_raw = mean_absolute_error(y_train, y_fit, multioutput='raw_values')
+        test_mae_raw = mean_absolute_error(y_test, y_pred, multioutput='raw_values')
+
         return {
             'train_rmse' : train_rmse, 
             'test_rmse' : test_rmse, 
+            'train_rmse_raw' : train_rmse_raw,
+            'test_rmse_raw' : test_rmse_raw,
             'train_r2' : train_r2, 
             'test_r2' : test_r2, 
-            'train_r2_forecast' : train_r2_raw[-1], 
-            'test_r2_forecast' : test_r2_raw[-1]
+            'train_r2_raw' : train_r2_raw, 
+            'test_r2_raw' : test_r2_raw,
+            'train_mae' : train_mae,
+            'test_mae' : test_mae,
+            'train_mae_raw' : train_mae_raw,
+            'test_mae_raw' : test_mae_raw
         }
     
 def evaluate_filled(downsampled :pd.DataFrame, model):
@@ -268,20 +288,47 @@ with st.echo():
     y_pred = pd.DataFrame(linear.predict(X_test), index=X_test.index, columns=target_columns)
     base_evalu = evaluate(y_fit, y_pred, y_train, y_test) if method=="Downsampling" else evaluate_filled(downsampled, linear)
 
-col1, col2, col3 = st.columns(3)
-col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
-col2.metric("r^2 (test)", round(base_evalu['test_r2'],3))
-col3.metric("r^2-forecast (test)", round(base_evalu['test_r2_forecast'],3))
+# Original Data vs Prediction
+trace1 = go.Scatter(x=data['date'], y=data['target_brightness'], mode='lines', name='original data')
+traces = [trace1]
+for target in target_columns:
+    traces.append(go.Scatter(x=data['date'], y=y_fit[target], mode='lines', name=target+'_fit'))
+    traces.append(go.Scatter(x=data.tail(y_pred.shape[0])['date'], y=y_pred[target], mode='lines', name=target+'_pred'))
 
-# PLOT COEFFICIENTS
+layout = go.Layout(title='Original Data vs Prediction', xaxis=dict(title='date'), yaxis=dict(title='target_brightness'))
+fig = go.Figure(data=traces, layout=layout)
+st.plotly_chart(fig)
+
+# show metrics
+col1, col2, col3 = st.columns(3)
+col1.metric("RMSE (train)", round(base_evalu['train_rmse'],3))
+col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
+col2.metric("MAE (train)", round(base_evalu['train_mae'],3))
+col2.metric("MAE (test)", round(base_evalu['test_mae'],3))
+col3.metric("r^2 (train)", round(base_evalu['train_r2'],3))
+col3.metric("r^2 (test)", round(base_evalu['test_r2'],3))
+
+raw_metrics_dic = {
+    'RMSE': ['train_rmse_raw', 'test_rmse_raw'],
+    'MAE': ['train_mae_raw', 'test_mae_raw'],
+    'R^2': ['train_r2_raw', 'test_r2_raw']
+}
+selected_metric = st.selectbox("plot metric over forecast horizon", raw_metrics_dic.keys(), index=0)
+traces = []
+for sel in raw_metrics_dic[selected_metric]:
+    traces.append(go.Scatter(x=np.arange(0,len(base_evalu[sel])), y=base_evalu[sel], mode='lines', name=sel))
+layout = go.Layout(title=f'Forecast Horizon: {selected_metric}', xaxis=dict(title='steps'), yaxis=dict(title=selected_metric))
+fig = go.Figure(data=traces, layout=layout)
+st.plotly_chart(fig)
+
+# plot coefficients
 coefficients_df = pd.DataFrame({
     "feature": feature_columns * len(target_columns),  # Repeat feature names for both sets
     "coefficient": np.ravel(linear.coef_),
     # "target": repeat_elements(target_columns, len(feature_columns))
     "target": [item for item in target_columns for _ in range(len(feature_columns))]
 })
-# Create a bar chart with different bar colors for each set
-fig = px.bar(
+fig = px.bar( 
     coefficients_df,
     x="feature",
     y="coefficient",
@@ -290,7 +337,6 @@ fig = px.bar(
     title="Feature Coefficients",
     barmode='group'
 )
-# Customize layout if needed
 fig.update_layout(
     xaxis_title="Feature",
     yaxis_title="Coefficient Value",
@@ -306,19 +352,9 @@ As expected from the data exploration the lag component has rather minute predic
 If I would be able to make recommendations I'd suggest measuring the inlet brightness every 5 minutes if possible as it is the 2nd most predictive feature - if possible ofc.
 ''')
 
-# Original Data vs Prediction
-trace1 = go.Scatter(x=data['date'], y=data['target_brightness'], mode='lines', name='original data')
-traces = [trace1]
-for target in target_columns:
-    traces.append(go.Scatter(x=data['date'], y=y_fit[target], mode='lines', name=target+'_fit'))
-    traces.append(go.Scatter(x=data.tail(y_pred.shape[0])['date'], y=y_pred[target], mode='lines', name=target+'_pred'))
-
-layout = go.Layout(title='Original Data vs Prediction', xaxis=dict(title='date'), yaxis=dict(title='target_brightness'))
-fig = go.Figure(data=traces, layout=layout)
-st.plotly_chart(fig)
-
 
 st.divider()
+'''
 st.markdown('''
 ## 3.2 Neural Network MLP Regressor
 ''')
@@ -349,7 +385,19 @@ with st.echo():
     y_pred = scaler_y.inverse_transform(y_pred_scaled) # reverse transform predictions
     evalu = evaluate(y_fit, y_pred, y_train, y_test) if method=="Downsampling" else evaluate_filled(downsampled, mlp)
 
-col1, col2, col3 = st.columns(3)
-col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'], 3))
-col2.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - base_evalu['test_r2'], 3))
-col3.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'],3), round(base_evalu['test_r2_forecast'] - evalu['train_r2_forecast'], 3))
+#col1, col2, col3, col4 = st.columns(4)
+#col1.metric("RMSE (test)", round(evalu['test_rmse'],3), round(evalu['test_rmse'] - base_evalu['test_rmse'], 3))
+#col2.metric("MAE (test)", round(base_evalu['test_mae'],3), round(evalu['test_mae'] - base_evalu['test_mae'], 3))
+#col3.metric("r^2 (test)", round(evalu['test_r2'],3), round(evalu['test_r2'] - base_evalu['test_r2'], 3))
+#col4.metric("r^2-forecast (test)", round(evalu['test_r2_forecast'][-1],3), round(base_evalu['test_r2_forecast'][-1] - evalu['train_r2_forecast'][-1], 3))
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("RMSE (train)", round(base_evalu['train_rmse'],3))
+col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
+col2.metric("MAE (train)", round(base_evalu['train_mae'],3))
+col2.metric("MAE (test)", round(base_evalu['test_mae'],3))
+col3.metric("r^2 (train)", round(base_evalu['train_r2'],3))
+col3.metric("r^2 (test)", round(base_evalu['test_r2'],3))
+col4.metric("r^2-forecast (train)", round(base_evalu['train_r2_forecast'][-1],3))
+col4.metric("r^2-forecast (test)", round(base_evalu['test_r2_forecast'][-1],3))
+'''
