@@ -36,13 +36,13 @@ We eagerly anticipate your participation in this challenge and look forward to r
 ''')
 st.divider()
 # TODO narrate! shorten the markdown comments / description to bullet points! (also note that the comments make sense with the given default settings of the visualizations) - bring some of the story of the development books back!
+# TODO beautify mlp evaluation
+# TODO add seasonal plot
 # TODO deploy...
 # ---
 # OPTIONALs
-# TODO show train eval metrics and add MAE
-# TODO show more in explo! what to talk about?
-# TODO plot the R2 raw values for multiple future steps
 # TODO 3.3 find a good model or at least automl
+# TODO show more in explo! what to talk about?
 # ---
 # IDEAS and Thoughts
 # - why is the r2 of lag2 step2 so much better than lag1 step1?
@@ -70,14 +70,35 @@ with st.echo():
     targ['date'] = pd.to_datetime(targ['date'], format="%d.%m.%Y %H:%M")
 
 st.markdown('#### Input 1')
-st.dataframe(inp1.head(10))
+st.dataframe(inp1)
 st.markdown('#### Input 2')
-st.dataframe(inp2.head(10))
+st.dataframe(inp2)
 st.markdown('#### Target')
-st.dataframe(targ.head(10))
+st.dataframe(targ)
 
-st.markdown('## 1.1 Stationarity')
+st.markdown('#### NaN Values')
+col1, col2, col3 = st.columns(3)
+col1.markdown('inp1')
+col1.write(inp1.isna().sum())
+col2.markdown('inp2')
+col2.write(inp2.isna().sum())
+col3.markdown('target')
+col3.write(targ.isna().sum())
 
+st.markdown('''
+#### Observation
+There is a time discrepancy between the measurements of the different features
+- inp1 are measured every 5 minutes
+- inp2 is measured every 2 hours
+- target is measured every 2 hours with a 3h45min delay
+''')
+
+st.markdown('''
+## 1.1 Stationarity
+The following function plots a given feature over time aggregating data points via a moving average of a given window size.
+window size of 1 = original data, 288 = daily average (for inp1)
+The light blue line is a linear regression model fit on the aggregated data that allows us to make conclusions about time dependency of a given feature - it's coefficient is shown below the plot.  
+''')
 with st.echo(): 
     def moving_average_plot(feature_set :pd.DataFrame, selected_feature :str, window :int) -> Tuple[go.Figure, float]:
         feature_set = feature_set.copy()
@@ -123,8 +144,16 @@ fig, coef = moving_average_plot(targ, selected_feature='target_brightness', wind
 st.plotly_chart(fig)
 st.metric(F'coefficient: "timestep" for target_brightness', coef)
 
+st.markdown('''
+We cannot observe any time dependent trends in the featuresets nor the target variable, so we don't have to explicitly model them later during feature engineering.
+''')
+
 st.divider()
-st.markdown('### Autocorrelation with lags (target variable)')
+st.markdown('''
+### Autocorrelation with lags (target variable)
+The following plot shows the correlation of the target variable with its previous measurements.
+It suggests significant correlation up until 8 steps backward ("lags").
+''')
 lags = range(1, 30)  # Choose the number of lags to include in the plot
 autocorrelation_values = [targ['target_brightness'].autocorr(lag=lag) for lag in lags]
 fig = go.Figure()
@@ -138,8 +167,9 @@ st.markdown('''
 ''')
 st.markdown('''
 ### 2.1 Merging Dataframes + Imputation
-We want to join dataframes so we can use inlet_brightness like the other features.  
-We can simply impute the mean values for ``inlet_brightness`` since we haven't found any trends or patterns in the data exploration. 
+Firstly we'll join dataframes so we can use inlet_brightness like the other features.  
+We can simply impute the mean values for ``inlet_brightness`` using linear interpolation.
+(In a real scenario I'd consider an experts opinion for the imputation of any value)
 ''')
 with st.echo():
     merged = pd.merge(inp1, inp2, on='date', how='outer')
@@ -149,15 +179,16 @@ st.dataframe(merged.head())
 
 st.markdown('''
 ### 2.2 Aggregation
-Unfortunately the measurements for our target variable ``target_brightness`` are the finest granulated value we can go down to without imputing the target variable, so some form of data aggregation has to happen.  
-options:
+Due to the time discrepancy in the measurement of our target variable we are left with either imputing the target variable or dropping all rows without a target measurement.  
+Since imputing the target variable itself is a dangerous process, in my opinion downsampling is the correct way of proceeding, however I also implemented to other approaches for experimentation:  
+(evaluation will still be done using the non-imputed data)
 ''')
 
 method = st.radio(
     "Aggregation Method",
     ["Downsampling", "Fill", "Interpolation"],
     captions = [
-        "Only take rows with a non-NaN target value", 
+        "Drop all feature rows with NaN target values", 
         "Fill NaN target values forward",
         "Linear Interpolation of target values"])
 
@@ -180,11 +211,9 @@ st.dataframe(data)
 
 st.markdown('''
 ### 2.3 Lags / Steps
-example:  
-- __Lead Time__ : 2h = 1 lag
-- __Forecast Horizon__ : 2h = 1 step
-
-this means we will look 1 step backwards and forwards for a prediction
+Lags enable us to consider the previous X target measure during the prediction step.  
+Steps are the next X measurements in the future that are required to be predicted.  
+Picking parameters for them is dependent of the actual use case, but since the requirements were not clear lags and steps can be set dynamically using the sliders below.
 ''')
 with st.echo():
     def make_lags_and_steps(data :pd.DataFrame, num_lags :int, num_steps :int) -> pd.DataFrame:
@@ -207,6 +236,8 @@ st.dataframe(data.head())
 
 st.markdown('''
 ### 2.4 Create Train/Test Splits
+Creating a train/test split without shuffling.  
+The last quarter of the recorded data is used for evaluation purposes.
 ''')
 with st.echo():
     target_columns = ['target_brightness'] + [col for col in data.columns if col.startswith('y_step_')]
@@ -225,6 +256,8 @@ st.dataframe(y.head())
 
 st.markdown('''
 # 3. Model Training and Evaluation
+Root Mean Squared Error, R Squared and Mean Absolute Error are considered for evaluation.  
+The values shown for these metrics are the mean for all target variables (forecasting steps)
 ''')
 with st.echo():
 
@@ -300,6 +333,7 @@ fig = go.Figure(data=traces, layout=layout)
 st.plotly_chart(fig)
 
 # show metrics
+st.markdown('#### Evaluation Metrics')
 col1, col2, col3 = st.columns(3)
 col1.metric("RMSE (train)", round(base_evalu['train_rmse'],3))
 col1.metric("RMSE (test)", round(base_evalu['test_rmse'],3))
@@ -313,14 +347,21 @@ raw_metrics_dic = {
     'MAE': ['train_mae_raw', 'test_mae_raw'],
     'R^2': ['train_r2_raw', 'test_r2_raw']
 }
-selected_metric = st.selectbox("plot metric over forecast horizon", raw_metrics_dic.keys(), index=0)
+selected_metric = st.selectbox("plot metric over forecast horizon", raw_metrics_dic.keys(), index=2)
 traces = []
 for sel in raw_metrics_dic[selected_metric]:
     traces.append(go.Scatter(x=np.arange(0,len(base_evalu[sel])), y=base_evalu[sel], mode='lines', name=sel))
 layout = go.Layout(title=f'Forecast Horizon: {selected_metric}', xaxis=dict(title='steps'), yaxis=dict(title=selected_metric))
 fig = go.Figure(data=traces, layout=layout)
 st.plotly_chart(fig)
+st.markdown('''
+This plot allows us to see the evaluated metrics for the different target variables (=forecasting steps).  
+It allows us to see how well the model predicts on any step into the future.  
+Depending on the use case it might be more important to have the model be more accurate certain steps ahead.  
+Keep in mind that the values shown above are the mean values for all forecasting steps - in this particular setting the R^2 actually increases over the forecast horizon.
+''')
 
+st.markdown('#### Model Coefficients')
 # plot coefficients
 coefficients_df = pd.DataFrame({
     "feature": feature_columns * len(target_columns),  # Repeat feature names for both sets
@@ -345,16 +386,15 @@ fig.update_layout(
 st.plotly_chart(fig) 
 
 st.markdown('''
-Note that the coefficients for target_brightness (grey) are irrelevant here, since they try to predict the currently measured paper with the current data from the process.
-(The paper that is actually produced with these feature values is actually measured in the following step!)    
-The most predictive feature for the target_brightness of a future step (=y_step_1) is soda, closely followed by inlet_brightness and pH value.  
-As expected from the data exploration the lag component has rather minute predictive influence on the next timestep.  
-If I would be able to make recommendations I'd suggest measuring the inlet brightness every 5 minutes if possible as it is the 2nd most predictive feature - if possible ofc.
+This plot shows the model's coefficients for the target variables (=forecasting steps) - these can be interpreted as predictive power of a feature to predict a target variable.  
+Notice that depending on the forecasting step other features change importance:  
+Soda, inlet_brightness and ph-value are important for the prediction of the next measurement step.  
+However inlet_brightness, peroxide and soda are more important for the next.  
+Longer forecasting horizons seem to favor ph-value and temperature as predictive features moreso than earlier steps in the horizon.
 ''')
 
 
 st.divider()
-'''
 st.markdown('''
 ## 3.2 Neural Network MLP Regressor
 ''')
@@ -398,6 +438,5 @@ col2.metric("MAE (train)", round(base_evalu['train_mae'],3))
 col2.metric("MAE (test)", round(base_evalu['test_mae'],3))
 col3.metric("r^2 (train)", round(base_evalu['train_r2'],3))
 col3.metric("r^2 (test)", round(base_evalu['test_r2'],3))
-col4.metric("r^2-forecast (train)", round(base_evalu['train_r2_forecast'][-1],3))
-col4.metric("r^2-forecast (test)", round(base_evalu['test_r2_forecast'][-1],3))
-'''
+col4.metric("r^2-forecast (train)", round(base_evalu['train_r2_raw'][-1],3))
+col4.metric("r^2-forecast (test)", round(base_evalu['test_r2_raw'][-1],3))
